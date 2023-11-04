@@ -114,7 +114,7 @@ def calc_f_churchill(
     return f
 
 def dp(
-        p, l, 
+        p, l, t,
         t_wh: float, 
         temp_grad: float, 
         md_vdp: float, 
@@ -138,7 +138,7 @@ def dp(
     :return: градиент давления для произвольного участка скважины
     """
     xi = 1 / 10 ** 6
-    t = (t_wh + (temp_grad * md_vdp) / 100) + 273 
+    t = (t_wh + (temp_grad * l) / 100) + 273 
     ws = calc_ws(gamma_water)
     rho_w = calc_rho_w(ws, t)
     g = 9.81
@@ -151,7 +151,7 @@ def dp(
      
     return dp
 
-def main(input):
+def main(**kwargs):
     
     q_liq = np.linspace(1, 400, 41)
     q_liq = [int(q_liq[_]) for _ in range(len(q_liq))]
@@ -162,19 +162,19 @@ def main(input):
     for _ in q_liq_sec:
         sol = solve_ivp(
                         dp, 
-                        t_span = [0, data['md_vdp']], 
-                        y0 = [data['p_wh'] * 0.101325],
+                        t_span = [0, kwargs['md_vdp']], 
+                        y0 = [kwargs['p_wh'] * 0.101325],
                         args = (  
-                                data['t_wh'], data['temp_grad'], data['md_vdp'], data['gamma_water'], data['roughness'],
-                                data['angle'], data['d_tub'], _
+                                kwargs['t_wh'], kwargs['t_wh'], kwargs['temp_grad'], kwargs['md_vdp'],
+                                kwargs['gamma_water'], kwargs['roughness'], kwargs['angle'], kwargs['d_tub'], _
                         ), 
-                        t_eval = [data['md_vdp']]
+                        t_eval = [kwargs['md_vdp']]
         )
         p_wf.append(sol.y[0][0] * 9.86923)
     
     q_liq = list(q_liq)
     q_liq = [int(q_liq[_]) for _ in range(len(q_liq))] 
-    result = {'p_wf': p_wf, 'q_liq': q_liq}
+    result = {'q_liq': q_liq, 'p_wf': p_wf}
     
     return result
 
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     with open('8.json') as file:
         data = json.load(file)
 
-    output = main(data)
+    output = main(**data)
 
     with open(r"output.json", "w", ) as  file:
-        json.dump(output, file)
+        json.dump(output, file, indent = 4)
