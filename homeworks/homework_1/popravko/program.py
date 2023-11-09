@@ -157,43 +157,54 @@ def calc_angle(md1: float, incl: dict) -> np.ndarray:
     return np.degrees(np.arcsin(calc_sin_angle(md1, md2, incl)))
 
 
-def calc_pressure_grad(p, h, gamma_water, q_liq, d_tub, angle, roughness, temp_grad, t_wh):
-    # step - глубина, на которую рассчитываем
+def calc_pressure_grad(rho_w, angle, f, d_tub, q_liq):
     eps = 1 / (10 ** 5)
+    grad_p = eps * (rho_w * 9.8 * np.cos(math.radians(90 - angle)) - 0.815 * f * rho_w / d_tub ** 5 * q_liq ** 2)
+
+    return grad_p
+
+
+def integr_func(hh, pt, gamma_water, q_liq, d_tub, angle, roughness, temp_grad):
+    p, t = pt
+
     ws = calc_ws(gamma_water)
-    t = t_wh + temp_grad * h
     rho_w = calc_rho_w(ws, t)
     mu_w = calc_mu_w(ws, t, p)
     n_re = calc_n_re(rho_w=rho_w, q_ms=q_liq, mu_w=mu_w, d_tub=d_tub)
     f = calc_ff_churchill(n_re=n_re, roughness=roughness, d_tub=d_tub)
-    grad_p = eps * (rho_w * 9.8 * np.cos(math.radians(90 - angle)) - 0.815 * f * rho_w / d_tub ** 5 * q_liq ** 2)
 
-    return grad_p
+    # Расчет градиента давления, используя необходимую гидравлическую корреляцию
+    dp_dl = calc_pressure_grad(rho_w, angle, f, d_tub, q_liq)
+
+    # Геотермический градиент
+    dt_dl = temp_grad
+
+    return dp_dl, dt_dl
 
 
 def main():
     with open(INPUT_DATA_PATH, "r", encoding="utf-8") as input_data:
         input_data_dict = json.load(fp=input_data)
 
-    gamma_water = input_data_dict['gamma_water']
-    md_vdp = input_data_dict['md_vdp']
-    d_tub = input_data_dict['d_tub']
-    angle = input_data_dict['angle']
-    roughness = input_data_dict['roughness']
-    p_wh = input_data_dict['p_wh']
-    t_wh = input_data_dict['t_wh'] + 273
-    temp_grad = input_data_dict['temp_grad'] * 0.01
+    gamma_water = input_data_dict['gamma_water']  # Относительная плотность воды по пресной воде с плотностью 1000 кг/м3
+    md_vdp = input_data_dict['md_vdp']  # Измеренная глубина верхних дыр перфорации, м
+    d_tub = input_data_dict['d_tub']  # Диаметр НКТ, м
+    angle = input_data_dict['angle']  # Угол наклона скважины к горизонтали, градусы цельсия
+    roughness = input_data_dict['roughness']  # Шероховатость, м
+    p_wh = input_data_dict['p_wh']  # Буферное давление, атм
+    t_wh = input_data_dict['t_wh'] + 273  # Температура жидкости у буферной задвижки, К
+    temp_grad = input_data_dict['temp_grad'] * 0.01  # Геотермический градиент, градусы цельсия/100 м
 
     p_wf_list = []
     q_list = list(np.linspace(1, 400, num=50, endpoint=True))
     for q in q_list:
         q_liq = q / 86400
         res = solve_ivp(
-            calc_pressure_grad,
-            t_span=[0, md_vdp],
-            y0=[p_wh],
+            integr_func,
+            t_span=(0, md_vdp),
+            y0=[p_wh, t_wh],
             method='RK23',
-            args=(gamma_water, q_liq, d_tub, angle, roughness, temp_grad, t_wh),
+            args=(gamma_water, q_liq, d_tub, angle, roughness, temp_grad),
             t_eval=[md_vdp]
         )
         p_wf_list.append(res.y[0][0])
